@@ -103,6 +103,11 @@ class GAsyncIOSelector(selectors._BaseSelectorImpl):
         self._hups.clear()
         return ready
 
+class NoWaitSelectSelector(selectors.SelectSelector):
+    _schedule_periodic_giterate = True
+
+    def select(self, timeout=None):
+        return super().select(0)
 
 class GAsyncIOEventLoop(os_events.SelectorEventLoop):
     def __init__(self):
@@ -203,9 +208,12 @@ class GAsyncIOEventLoop(os_events.SelectorEventLoop):
         self._run_once()
         if self._ready:
             return True
-        else:
-            self._giteration = None
-            return False
+        with self._lock:
+            if getattr(self._selector, '_schedule_periodic_giterate', False):
+                self._giteration = GLib.timeout_add(10, self._giterate)
+            else:
+                self._giteration = None
+        return False
 
 
 class GAsyncIOEventLoopPolicy(os_events.DefaultEventLoopPolicy):
