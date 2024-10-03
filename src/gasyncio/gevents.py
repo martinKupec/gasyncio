@@ -110,11 +110,20 @@ class NoWaitSelectSelector(selectors.SelectSelector):
         return super().select(0)
 
 class GAsyncIOEventLoop(os_events.SelectorEventLoop):
-    def __init__(self):
+    UserSelector = None
+
+    def __init__(self, selector=None):
         self._is_slave = False
-        super().__init__(GAsyncIOSelector())
         self._giteration = None
         self._lock = threading.Lock()
+        if selector is None:
+            if GAsyncIOEventLoop.UserSelector is not None:
+                selector = GAsyncIOEventLoop.UserSelector
+            elif sys.platform == 'win32':
+                selector = NoWaitSelectSelector()
+            else:
+                selector = GAsyncIOSelector()
+        super().__init__(selector)
 
     def is_running(self):
         return self._is_slave
@@ -220,7 +229,8 @@ class GAsyncIOEventLoopPolicy(os_events.DefaultEventLoopPolicy):
     _loop_factory = GAsyncIOEventLoop
 
 
-def start_slave_loop():
+def start_slave_loop(selector=None):
+    GAsyncIOEventLoop.UserSelector = selector
     asyncio.set_event_loop_policy(GAsyncIOEventLoopPolicy())
     loop = asyncio.get_event_loop()
     loop.start_slave_loop()
