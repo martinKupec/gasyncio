@@ -39,6 +39,8 @@ class GAsyncIOSelector(selectors._BaseSelectorImpl):
     def __init__(self):
         super().__init__()
         self._sources = {}
+        self._io_channels = {}
+        self._fileobj_preserve = set()
         self._hups = set()
 
     @staticmethod
@@ -57,9 +59,14 @@ class GAsyncIOSelector(selectors._BaseSelectorImpl):
         key = super().register(fileobj, events, data)
         if key.fd in self._sources:
             raise KeyError
-        io_channel = _GLib_IOChannel_new_socket(key.fd)
-        io_channel.set_encoding(None)
-        io_channel.set_buffered(False)
+        if key.fd in self._io_channels:
+            io_channel = self._io_channels[key.fd]
+        else:
+            io_channel = _GLib_IOChannel_new_socket(key.fd)
+            io_channel.set_encoding(None)
+            io_channel.set_buffered(False)
+            io_channel.set_close_on_unref(False)
+            self._io_channels[key.fd] = io_channel
         self._sources[key.fd] = GLib.io_add_watch(io_channel, GLib.PRIORITY_DEFAULT, self._events_to_io_condition(events) | GLib.IOCondition.HUP, self._channel_watch_cb, key)
         return key
 
@@ -67,7 +74,17 @@ class GAsyncIOSelector(selectors._BaseSelectorImpl):
         key = super().unregister(fileobj)
         source = self._sources.pop(key.fd)
         GLib.source_remove(source)
+        if not fileobj in self._fileobj_preserve:
+            io_channel = self._io_channels[key.fd]
+            del self._io_channels[key.fd]
+            del io_channel
         return key
+
+    def modify(self, fileobj, events, data=None):
+        self._fileobj_preserve.add(fileobj)
+        ret = super().modify(fileobj, events, data)
+        self._fileobj_preserve.remove(fileobj)
+        return ret
 
     def _channel_watch_cb(self, channel, condition, key):
         handle_in, handle_out = key.data
