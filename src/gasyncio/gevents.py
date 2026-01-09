@@ -34,6 +34,11 @@ else:
     _GLib_IOChannel_new_socket = GLib.IOChannel.unix_new
     os_events = asyncio.unix_events
 
+try:
+    defaultPolicyLoop = os_events._DefaultEventLoopPolicy
+except:
+    defaultPolicyLoop = os_events.DefaultEventLoopPolicy
+
 
 class GAsyncIOSelector(selectors._BaseSelectorImpl):
     def __init__(self):
@@ -208,6 +213,10 @@ class GAsyncIOEventLoop(os_events.SelectorEventLoop):
         self._schedule_giteration()
         return handle
 
+    def _write_to_self(self):
+        super()._write_to_self()
+        self._schedule_giteration()
+
     def _schedule_giteration(self):
         with self._lock:
             if self._giteration is None:
@@ -225,14 +234,14 @@ class GAsyncIOEventLoop(os_events.SelectorEventLoop):
         return False
 
 
-class GAsyncIOEventLoopPolicy(os_events.DefaultEventLoopPolicy):
+class GAsyncIOEventLoopPolicy(defaultPolicyLoop):
     _loop_factory = GAsyncIOEventLoop
 
 
 def start_slave_loop(selector=None):
     GAsyncIOEventLoop.UserSelector = selector
     asyncio.set_event_loop_policy(GAsyncIOEventLoopPolicy())
-    loop = asyncio.get_event_loop()
+    loop = asyncio.new_event_loop()
     loop.start_slave_loop()
 
 
